@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Tag</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Home screen -->
+  <div id="home" class="screen active">
+    <h1 class="title">Tag</h1>
+    <div class="card">
+      <label>
+        Username
+        <input id="usernameInput" type="text" maxlength="16" placeholder="Your name" />
+      </label>
+      <label>
+        Color
+        <input id="colorInput" type="color" value="#ff5577" />
+      </label>
+      <hr />
+      <label>
+        Join Code
+        <input id="codeInput" type="text" inputmode="numeric" maxlength="4" placeholder="0000" />
+      </label>
+      <div class="row">
+        <button id="joinBtn">Join Game</button>
+        <button id="createBtn" class="primary">Create Game</button>
+      </div>
+      <div id="homeError" class="error"></div>
+    </div>
+  </div>
+
+  <!-- Lobby screen -->
+  <div id="lobby" class="screen">
+    <h1 class="title small">Lobby</h1>
+    <div class="card wide">
+      <div class="lobby-code-row">
+        <div>Lobby code:</div>
+        <div id="lobbyCode" class="lobby-code">----</div>
+      </div>
+      <div class="players-row">
+        <div class="players-list" id="playersList"></div>
+      </div>
+      <div id="settings" class="settings">
+        <label>
+          Game Mode
+          <select id="modeSelect">
+            <option value="normal">Normal Tag</option>
+            <option value="freeze">Freeze Tag</option>
+            <option value="infection">Infection Tag</option>
+          </select>
+        </label>
+        <label>
+          Time Limit
+          <select id="timeSelect">
+            <option value="60">1 minute</option>
+            <option value="120" selected>2 minutes</option>
+            <option value="180">3 minutes</option>
+            <option value="240">4 minutes</option>
+            <option value="300">5 minutes</option>
+          </select>
+        </label>
+        <label>
+          Map
+          <select id="mapSelect">
+            <option value="summer">Summer</option>
+            <option value="spring">Spring</option>
+            <option value="fall">Fall</option>
+            <option value="winter">Winter</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <button id="leaveLobbyBtn">Leave</button>
+        <button id="startBtn" class="primary">Start Game</button>
+      </div>
+      <div id="lobbyError" class="error"></div>
+      <div id="hostNote" class="note"></div>
+    </div>
+  </div>
+
+  <!-- Game screen -->
+  <div id="game" class="screen">
+    <div class="hud">
+      <div id="hudTime">--:--</div>
+      <div id="hudMode"></div>
+      <div id="hudPower"></div>
+    </div>
+    <canvas id="canvas" width="1600" height="900"></canvas>
+    <div id="gameOver" class="gameover hidden">
+      <div class="gameover-card">
+        <h2 id="gameOverTitle">Game Over</h2>
+        <div id="gameOverText"></div>
+        <button id="backToLobbyBtn" class="primary">Back to Lobby</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>
