@@ -15,10 +15,10 @@
         Username
         <input id="usernameInput" type="text" maxlength="16" placeholder="Your name" />
       </label>
-      <label>
-        Color
-        <input id="colorInput" type="color" value="#ff5577" />
-      </label>
+      <div class="field">
+        <span class="field-label">Color</span>
+        <div id="colorPresets" class="color-presets"></div>
+      </div>
       <hr />
       <label>
         Join Code
@@ -84,9 +84,9 @@
   <!-- Game screen -->
   <div id="game" class="screen">
     <div class="hud">
-      <div id="hudTime">--:--</div>
-      <div id="hudMode"></div>
-      <div id="hudPower"></div>
+      <div id="hudPower" class="hud-side hud-left"></div>
+      <div id="hudTime" class="hud-time">--:--</div>
+      <div id="hudMode" class="hud-side hud-right"></div>
     </div>
     <canvas id="canvas" width="1600" height="900"></canvas>
     <div id="gameOver" class="gameover hidden">

@@ -2,8 +2,7 @@
   "name": "tag-game",
   "version": "1.0.0",
   "description": "Online multiplayer 2D platformer tag game",
-  "main": "server.js",
-  "scripts": {
+  "main": "server.js",   "scripts": {
     "start": "node server.js"
   },
   "engines": {

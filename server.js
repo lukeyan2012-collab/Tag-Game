@@ -12,10 +12,17 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ---------- World constants ----------
 const WORLD_W = 2400;
 const WORLD_H = 1100;
-const PLAYER_SIZE = 24;
-const GRAVITY = 0.6;
-const MOVE_SPEED = 4.2;
-const JUMP_V = -13;
+const WALL_W = 30;
+const PLAYER_SIZE = 32;
+// Snappier (less floaty) jump: total ground-to-ground air time ≈ 0.9 s.
+// With JUMP_V=-21 and GRAVITY=1.55, time-to-peak = 21/1.55 ≈ 13.55 frames,
+// so air time ≈ 27.1 frames at 30 Hz ≈ 0.903 s. Peak height ≈ 142 px.
+const GRAVITY = 1.55;
+// 6 seconds end-to-end across the world: 2400 / 6s / 30Hz = 13.33 px/tick
+const MOVE_SPEED = 13.33;
+const SUPER_SPEED_MUL = 1.55;
+const JUMP_V = -21;
+const VY_MAX = 26;
 const TICK_HZ = 30;
 const TAG_COOLDOWN_MS = 2000;
 const POWERUP_INTERVAL_MS = 10000;
@@ -23,56 +30,151 @@ const POWERUP_DURATION_MS = 6000;
 const SHIELD_DURATION_MS = 5000;
 const FREEZE_BOUNCE_FACTOR = 1.7; // beach umbrella
 
-// Shared platform layout (themed per map). 15 platforms total.
-// Tier spacing is ~120px so each tier is reachable with a single jump.
-// Same-tier gaps are wide; players use the offset tier above/below as stepping stones.
-const PLATFORMS = [
-  { x: 0,    y: 1060, w: 2400, h: 40 }, // 1 — ground
-  // Tier A — y=950 (5)
-  { x: 180,  y: 950, w: 220, h: 16 },
-  { x: 600,  y: 950, w: 220, h: 16 },
-  { x: 1020, y: 950, w: 220, h: 16 },
-  { x: 1440, y: 950, w: 220, h: 16 },
-  { x: 1860, y: 950, w: 220, h: 16 },
-  // Tier B — y=830 (4, offset between A platforms)
-  { x: 380,  y: 830, w: 220, h: 16 },
-  { x: 820,  y: 830, w: 220, h: 16 },
-  { x: 1240, y: 830, w: 220, h: 16 },
-  { x: 1660, y: 830, w: 220, h: 16 },
-  // Tier C — y=710 (3)
-  { x: 580,  y: 710, w: 220, h: 16 },
-  { x: 1020, y: 710, w: 220, h: 16 },
-  { x: 1460, y: 710, w: 220, h: 16 },
-  // Tier D — y=580 (2, top)
-  { x: 820,  y: 580, w: 240, h: 16 },
-  { x: 1340, y: 580, w: 240, h: 16 },
+// 24 platforms per map — same count + ground + 4 wall-attached "shelves" everywhere,
+// but the 19 floating platforms are scattered differently per map so each feels distinct.
+const COMMON_PLATFORMS = [
+  { x: 0,    y: 1060, w: 2400, h: 40 }, // ground
+  { x: 0,    y: 760,  w: 110,  h: 16 }, // left wall low shelf
+  { x: 2290, y: 760,  w: 110,  h: 16 }, // right wall low shelf
+  { x: 0,    y: 470,  w: 110,  h: 16 }, // left wall high shelf
+  { x: 2290, y: 470,  w: 110,  h: 16 }, // right wall high shelf
 ];
+
+const SUMMER_PLATFORMS = [
+  ...COMMON_PLATFORMS,
+  { x: 180,  y: 970,  w: 200, h: 16 },
+  { x: 480,  y: 950,  w: 180, h: 16 },
+  { x: 760,  y: 1000, w: 200, h: 16 },
+  { x: 1080, y: 930,  w: 200, h: 16 },
+  { x: 1380, y: 990,  w: 200, h: 16 },
+  { x: 1820, y: 940,  w: 220, h: 16 },
+  { x: 340,  y: 870,  w: 180, h: 16 },
+  { x: 680,  y: 830,  w: 200, h: 16 },
+  { x: 1140, y: 850,  w: 220, h: 16 },
+  { x: 1500, y: 820,  w: 200, h: 16 },
+  { x: 1900, y: 820,  w: 200, h: 16 },
+  { x: 240,  y: 720,  w: 180, h: 16 },
+  { x: 920,  y: 700,  w: 220, h: 16 },
+  { x: 1340, y: 720,  w: 200, h: 16 },
+  { x: 1700, y: 700,  w: 220, h: 16 },
+  { x: 350,  y: 580,  w: 200, h: 16 },
+  { x: 1700, y: 580,  w: 220, h: 16 },
+  { x: 820,  y: 460,  w: 200, h: 16 },
+  { x: 1380, y: 420,  w: 240, h: 16 },
+];
+
+const SPRING_PLATFORMS = [
+  ...COMMON_PLATFORMS,
+  { x: 200,  y: 1000, w: 220, h: 16 },
+  { x: 540,  y: 940,  w: 200, h: 16 },
+  { x: 860,  y: 970,  w: 180, h: 16 },
+  { x: 1140, y: 1000, w: 200, h: 16 },
+  { x: 1450, y: 950,  w: 220, h: 16 },
+  { x: 1820, y: 980,  w: 200, h: 16 },
+  { x: 380,  y: 850,  w: 200, h: 16 },
+  { x: 760,  y: 880,  w: 200, h: 16 },
+  { x: 1080, y: 830,  w: 220, h: 16 },
+  { x: 1460, y: 870,  w: 200, h: 16 },
+  { x: 1840, y: 850,  w: 200, h: 16 },
+  { x: 200,  y: 700,  w: 180, h: 16 },
+  { x: 540,  y: 730,  w: 200, h: 16 },
+  { x: 1100, y: 720,  w: 220, h: 16 },
+  { x: 1620, y: 700,  w: 220, h: 16 },
+  { x: 380,  y: 590,  w: 200, h: 16 },
+  { x: 1340, y: 560,  w: 240, h: 16 },
+  { x: 700,  y: 470,  w: 200, h: 16 },
+  { x: 1700, y: 440,  w: 220, h: 16 },
+];
+
+const FALL_PLATFORMS = [
+  ...COMMON_PLATFORMS,
+  { x: 200,  y: 980,  w: 180, h: 16 },
+  { x: 460,  y: 940,  w: 200, h: 16 },
+  { x: 740,  y: 990,  w: 200, h: 16 },
+  { x: 1040, y: 950,  w: 200, h: 16 },
+  { x: 1340, y: 1000, w: 220, h: 16 },
+  { x: 1900, y: 970,  w: 220, h: 16 },
+  { x: 320,  y: 870,  w: 180, h: 16 },
+  { x: 620,  y: 850,  w: 200, h: 16 },
+  { x: 940,  y: 820,  w: 200, h: 16 },
+  { x: 1260, y: 830,  w: 200, h: 16 },
+  { x: 1620, y: 870,  w: 200, h: 16 },
+  { x: 200,  y: 720,  w: 200, h: 16 },
+  { x: 540,  y: 700,  w: 200, h: 16 },
+  { x: 920,  y: 720,  w: 220, h: 16 },
+  { x: 1500, y: 740,  w: 220, h: 16 },
+  { x: 600,  y: 590,  w: 220, h: 16 },
+  { x: 1380, y: 600,  w: 220, h: 16 },
+  { x: 880,  y: 470,  w: 240, h: 16 },
+  { x: 1540, y: 440,  w: 220, h: 16 },
+];
+
+const WINTER_PLATFORMS = [
+  ...COMMON_PLATFORMS,
+  { x: 220,  y: 990,  w: 220, h: 16 },
+  { x: 560,  y: 950,  w: 180, h: 16 },
+  { x: 900,  y: 1010, w: 200, h: 16 },
+  { x: 1200, y: 940,  w: 220, h: 16 },
+  { x: 1540, y: 980,  w: 200, h: 16 },
+  { x: 1900, y: 950,  w: 200, h: 16 },
+  { x: 360,  y: 850,  w: 200, h: 16 },
+  { x: 720,  y: 820,  w: 220, h: 16 },
+  { x: 1080, y: 870,  w: 200, h: 16 },
+  { x: 1440, y: 830,  w: 200, h: 16 },
+  { x: 1820, y: 850,  w: 200, h: 16 },
+  { x: 220,  y: 720,  w: 200, h: 16 },
+  { x: 1080, y: 700,  w: 220, h: 16 },
+  { x: 1500, y: 720,  w: 200, h: 16 },
+  { x: 1900, y: 700,  w: 200, h: 16 },
+  { x: 480,  y: 580,  w: 220, h: 16 },
+  { x: 1640, y: 580,  w: 220, h: 16 },
+  { x: 800,  y: 460,  w: 240, h: 16 },
+  { x: 1380, y: 420,  w: 240, h: 16 },
+];
+
+const PLATFORMS_BY_MAP = {
+  summer: SUMMER_PLATFORMS,
+  spring: SPRING_PLATFORMS,
+  fall: FALL_PLATFORMS,
+  winter: WINTER_PLATFORMS,
+};
+
+function getPlatforms(lobby) {
+  return PLATFORMS_BY_MAP[lobby.settings.map] || SUMMER_PLATFORMS;
+}
 
 // Map-specific objects (hiding + bouncy)
 // type: 'hide' covers player visually; 'bouncy' boosts jump on top
+// Springs are placed in clear vertical columns so the bounce isn't blocked by
+// a low-tier platform overhead. Both x-ranges are also clear of every spawn column.
+const COMMON_SPRINGS = [
+  { type: 'bouncy', x: 115,  y: 1010, w: 60, h: 50 },
+  { type: 'bouncy', x: 2120, y: 1010, w: 60, h: 50 },
+];
+
 const MAP_OBJECTS = {
   summer: [
-    // bouncy umbrellas sitting on top of various platforms
-    { type: 'bouncy', x: 1080, y: 890, w: 100, h: 60 }, // on tier A (1020,950)
-    { type: 'bouncy', x: 420,  y: 770, w: 100, h: 60 }, // on tier B (380,830)
-    { type: 'bouncy', x: 1520, y: 650, w: 100, h: 60 }, // on tier C (1460,710)
+    ...COMMON_SPRINGS,
   ],
   spring: [
-    // 3 large foreground trees on ground (between tier-A platforms)
-    { type: 'hide', x: 420,  y: 900, w: 100, h: 160, kind: 'tree' },
-    { type: 'hide', x: 1240, y: 900, w: 100, h: 160, kind: 'tree' },
-    { type: 'hide', x: 2080, y: 900, w: 100, h: 160, kind: 'tree' },
+    // Trees in low-platform gaps; none sit on a spawn column for any player count
+    { type: 'hide', x: 80,   y: 900, w: 90, h: 160, kind: 'tree' },
+    { type: 'hide', x: 435,  y: 900, w: 90, h: 160, kind: 'tree' },
+    { type: 'hide', x: 1050, y: 900, w: 90, h: 160, kind: 'tree' },
+    ...COMMON_SPRINGS,
   ],
   fall: [
-    // 2 leaf piles on platforms
-    { type: 'hide', x: 870,  y: 780, w: 110, h: 50, kind: 'leafpile' }, // on tier B (820,830)
-    { type: 'hide', x: 1080, y: 660, w: 110, h: 50, kind: 'leafpile' }, // on tier C (1020,710)
+    // Pumpkin piles sit on top of fall-map platforms
+    { type: 'hide', x: 980, y: 770, w: 110, h: 50, kind: 'pumpkin' }, // on (940,820)
+    { type: 'hide', x: 960, y: 670, w: 110, h: 50, kind: 'pumpkin' }, // on (920,720)
+    ...COMMON_SPRINGS,
   ],
   winter: [
-    // 3 snowmen on ground
-    { type: 'hide', x: 440,  y: 960, w: 60, h: 100, kind: 'snowman' },
-    { type: 'hide', x: 1260, y: 960, w: 60, h: 100, kind: 'snowman' },
-    { type: 'hide', x: 2100, y: 960, w: 60, h: 100, kind: 'snowman' },
+    // Snowmen on ground in winter-map gaps (none on spawn columns)
+    { type: 'hide', x: 140,  y: 960, w: 60, h: 100, kind: 'snowman' },
+    { type: 'hide', x: 1100, y: 960, w: 60, h: 100, kind: 'snowman' },
+    { type: 'hide', x: 1840, y: 960, w: 60, h: 100, kind: 'snowman' },
+    ...COMMON_SPRINGS,
   ],
 };
 
@@ -188,6 +290,7 @@ function physicsStep(lobby) {
   const dt = 1; // step units, gravity tuned for 30Hz
   const map = lobby.settings.map;
   const objs = MAP_OBJECTS[map] || [];
+  const platforms = getPlatforms(lobby);
   const now = Date.now();
 
   for (const id in lobby.players) {
@@ -196,7 +299,7 @@ function physicsStep(lobby) {
       p.vx = 0;
       // still apply gravity so frozen players sit on platforms
     } else {
-      const speedMul = (now < p.speedUntil || now < p.starUntil) ? 1.7 : 1;
+      const speedMul = (now < p.speedUntil || now < p.starUntil) ? SUPER_SPEED_MUL : 1;
       const jumpMul = (now < p.jumpUntil || now < p.starUntil) ? 1.55 : 1;
       let ax = 0;
       if (p.input.left) ax -= MOVE_SPEED * speedMul;
@@ -212,13 +315,13 @@ function physicsStep(lobby) {
     }
 
     p.vy += GRAVITY;
-    if (p.vy > 18) p.vy = 18;
+    if (p.vy > VY_MAX) p.vy = VY_MAX;
 
     // Horizontal move + collide
     p.x += p.vx * dt;
-    if (p.x < 0) p.x = 0;
-    if (p.x + PLAYER_SIZE > WORLD_W) p.x = WORLD_W - PLAYER_SIZE;
-    for (const plat of PLATFORMS) {
+    if (p.x < WALL_W) p.x = WALL_W;
+    if (p.x + PLAYER_SIZE > WORLD_W - WALL_W) p.x = WORLD_W - WALL_W - PLAYER_SIZE;
+    for (const plat of platforms) {
       const pr = { x: p.x, y: p.y, w: PLAYER_SIZE, h: PLAYER_SIZE };
       if (rectsOverlap(pr, plat)) {
         if (p.vx > 0) p.x = plat.x - PLAYER_SIZE;
@@ -232,7 +335,7 @@ function physicsStep(lobby) {
     if (p.y + PLAYER_SIZE > WORLD_H) {
       p.y = WORLD_H - PLAYER_SIZE; p.vy = 0; p.onGround = true;
     }
-    for (const plat of PLATFORMS) {
+    for (const plat of platforms) {
       const pr = { x: p.x, y: p.y, w: PLAYER_SIZE, h: PLAYER_SIZE };
       if (rectsOverlap(pr, plat)) {
         if (p.vy > 0) {
@@ -280,7 +383,8 @@ function pickPowerupType() {
 
 function spawnPowerup(lobby) {
   // Pick a random platform top (any platform including ground), random x within
-  const plat = PLATFORMS[Math.floor(Math.random() * PLATFORMS.length)];
+  const platforms = getPlatforms(lobby);
+  const plat = platforms[Math.floor(Math.random() * platforms.length)];
   const w = 22, h = 22;
   const x = plat.x + 10 + Math.random() * Math.max(0, plat.w - 20 - w);
   const y = plat.y - h - 4;
@@ -391,20 +495,21 @@ function resolveContacts(lobby) {
 }
 
 // ---------- Win condition ----------
+// End-screen format: only the loser(s) are shown. Each branch computes a `losers`
+// array of usernames; the client renders "X lost" / "X, Y lost" from it.
 function checkEnd(lobby) {
   const now = Date.now();
   const mode = lobby.settings.mode;
   const players = Object.values(lobby.players);
-  if (players.length === 0) { endGame(lobby, { reason: 'empty' }); return; }
+  if (players.length === 0) { endGame(lobby, { reason: 'empty', losers: [] }); return; }
 
   if (mode === 'freeze') {
-    const itPlayers = players.filter(p => p.isIt);
     const nonIt = players.filter(p => !p.isIt);
     if (nonIt.length > 0 && nonIt.every(p => p.frozen)) {
+      // Everyone got frozen → all the frozen non-It players lost.
       endGame(lobby, {
         reason: 'all-frozen',
-        text: 'Tagger wins! Everyone got frozen.',
-        winners: itPlayers.map(p => p.username),
+        losers: nonIt.map(p => p.username),
       });
       return;
     }
@@ -413,33 +518,41 @@ function checkEnd(lobby) {
   if (now >= lobby.state.endsAt) {
     if (mode === 'normal') {
       const it = players.find(p => p.isIt);
-      const winners = players.filter(p => !p.isIt).map(p => p.username);
       endGame(lobby, {
         reason: 'time',
-        text: it ? `${it.username} was It! Everyone else wins.` : 'Time up!',
-        winners,
-        loser: it ? it.username : null,
+        losers: it ? [it.username] : [],
       });
     } else if (mode === 'infection') {
-      const survivors = players.filter(p => !p.isIt).map(p => p.username);
+      const survivors = players.filter(p => !p.isIt);
       if (survivors.length > 0) {
+        // Survivors held out → all current chasers lost.
         endGame(lobby, {
-          reason: 'time', text: 'Survivors win!', winners: survivors,
+          reason: 'time',
+          losers: players.filter(p => p.isIt).map(p => p.username),
         });
       } else {
-        const chasers = players.filter(p => p.isIt).map(p => p.username);
+        // Everyone got infected → all the (formerly survivor) infected players lost.
+        // We can't tell the original "It" apart from later infectees, so call them all losers.
         endGame(lobby, {
-          reason: 'time', text: 'Infection wins!', winners: chasers,
+          reason: 'time',
+          losers: players.map(p => p.username),
         });
       }
     } else if (mode === 'freeze') {
-      const survivors = players.filter(p => !p.isIt && !p.frozen).map(p => p.username);
-      endGame(lobby, {
-        reason: 'time',
-        text: survivors.length > 0 ? 'Survivors win!' : 'Tagger wins!',
-        winners: survivors.length > 0 ? survivors :
-          players.filter(p => p.isIt).map(p => p.username),
-      });
+      const survivors = players.filter(p => !p.isIt && !p.frozen);
+      if (survivors.length > 0) {
+        // Timer ran out with someone still unfrozen → It lost.
+        endGame(lobby, {
+          reason: 'time',
+          losers: players.filter(p => p.isIt).map(p => p.username),
+        });
+      } else {
+        // No survivors and no all-frozen branch above ⇒ everyone non-It is frozen.
+        endGame(lobby, {
+          reason: 'time',
+          losers: players.filter(p => !p.isIt).map(p => p.username),
+        });
+      }
     }
   }
 }
@@ -471,7 +584,8 @@ setInterval(() => {
       map: lobby.settings.map,
       players: Object.values(lobby.players).map(p => ({
         id: p.id, username: p.username, color: p.color,
-        x: p.x, y: p.y, facing: p.facing,
+        x: p.x, y: p.y, vx: p.vx, facing: p.facing,
+        onGround: p.onGround,
         isIt: p.isIt, frozen: p.frozen, hidden: p.hidden,
         invisibleUntil: p.invisibleUntil,
         shieldUntil: p.shieldUntil,
@@ -543,10 +657,11 @@ io.on('connection', (socket) => {
       return socket.emit('errorMsg', 'Could not start game.');
     io.to('lobby:' + code).emit('gameStart', {
       settings: lobby.settings,
-      platforms: PLATFORMS,
+      platforms: getPlatforms(lobby),
       objects: MAP_OBJECTS[lobby.settings.map] || [],
       worldW: WORLD_W,
       worldH: WORLD_H,
+      wallW: WALL_W,
       playerSize: PLAYER_SIZE,
     });
   });
