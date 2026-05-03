@@ -338,9 +338,23 @@ $('controlsBtn').addEventListener('click', () => {
   $('controlsModal').classList.remove('hidden');
 });
 
-// Quick "exit" button — opens about:blank in a new tab.
+// Quick "exit" button — opens an about:blank tab and embeds the game in it via
+// iframe, so the URL reads about:blank but the game keeps running.
 $('aboutBlankBtn').addEventListener('click', () => {
-  window.open('about:blank', '_blank');
+  const w = window.open('about:blank', '_blank');
+  if (!w) {
+    alert('Pop-ups blocked — allow pop-ups for this site to use the about:blank exit.');
+    return;
+  }
+  const url = window.location.href;
+  w.document.write(
+    '<!DOCTYPE html><html><head><title>about:blank</title>' +
+    '<style>html,body{margin:0;padding:0;height:100%;background:#fff;}' +
+    'iframe{border:0;width:100%;height:100vh;display:block;}</style>' +
+    '</head><body><iframe src="' + url.replace(/"/g, '&quot;') +
+    '" allow="autoplay; fullscreen"></iframe></body></html>'
+  );
+  w.document.close();
 });
 $('closeControlsBtn').addEventListener('click', () => {
   $('controlsModal').classList.add('hidden');
@@ -1422,15 +1436,15 @@ function updateDust() {
 }
 
 function drawDust(map) {
+  // Lighter palette than before (more pastel, lower max alpha)
   let tint;
   switch (map) {
-    case 'summer': tint = '180,150,90'; break;
-    case 'spring': tint = '120,180,130'; break;
-    case 'fall':   tint = '140,90,55';  break;
-    case 'winter': tint = '210,225,240'; break;
-    default:       tint = '170,160,130';
+    case 'summer': tint = '230,210,160'; break;
+    case 'spring': tint = '180,220,180'; break;
+    case 'fall':   tint = '210,160,120'; break;
+    case 'winter': tint = '235,242,250'; break;
+    default:       tint = '215,205,185';
   }
-  // Viewport cull — skip particles outside the visible world rect.
   const cw = canvas.width / camera.zoom;
   const ch = canvas.height / camera.zoom;
   const minX = camera.cx - cw / 2 - 16;
@@ -1439,7 +1453,7 @@ function drawDust(map) {
   const maxY = camera.cy + ch / 2 + 16;
   for (const d of dust) {
     if (d.x < minX || d.x > maxX || d.y < minY || d.y > maxY) continue;
-    const a = Math.max(0, d.life * 0.85);
+    const a = Math.max(0, d.life * 0.55); // softer than before
     ctx.fillStyle = `rgba(${tint},${a})`;
     ctx.beginPath();
     ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
