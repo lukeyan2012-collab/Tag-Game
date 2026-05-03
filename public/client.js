@@ -49,10 +49,24 @@ let selectedColor = PRESET_COLORS[0];
   });
 })();
 
+// "Create Game" opens a Public/Private modal first.
 $('createBtn').addEventListener('click', () => {
-  const username = $('usernameInput').value.trim() || 'Player';
-  socket.emit('createLobby', { username, color: selectedColor });
+  $('createModal').classList.remove('hidden');
 });
+$('cancelCreateBtn').addEventListener('click', () => {
+  $('createModal').classList.add('hidden');
+});
+$('createModal').addEventListener('click', (e) => {
+  // click on dim background dismisses; click on the card itself does not
+  if (e.target.id === 'createModal') $('createModal').classList.add('hidden');
+});
+function doCreate(isPublic) {
+  const username = $('usernameInput').value.trim() || 'Player';
+  socket.emit('createLobby', { username, color: selectedColor, isPublic });
+  $('createModal').classList.add('hidden');
+}
+$('createPrivateBtn').addEventListener('click', () => doCreate(false));
+$('createPublicBtn').addEventListener('click', () => doCreate(true));
 $('joinBtn').addEventListener('click', () => {
   const username = $('usernameInput').value.trim() || 'Player';
   const code = $('codeInput').value.trim();
@@ -65,6 +79,51 @@ $('joinBtn').addEventListener('click', () => {
 $('codeInput').addEventListener('input', (e) => {
   e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
 });
+
+// Restore remembered username on load; push identity to server for home chat.
+const remembered = rememberedName();
+if (remembered) $('usernameInput').value = remembered;
+$('usernameInput').addEventListener('change', () => pushHomeIdentity());
+socket.on('connect', () => { pushHomeIdentity(); });
+
+// Public-games browser
+$('refreshPublicBtn').addEventListener('click', () => {
+  socket.emit('refreshPublicLobbies');
+});
+
+function modeShort(m) {
+  return m === 'normal' ? 'Normal' : m === 'freeze' ? 'Freeze' : m === 'infection' ? 'Infection' : m;
+}
+function mapShort(m) {
+  return m ? (m[0].toUpperCase() + m.slice(1)) : '';
+}
+
+function renderPublicLobbies(list) {
+  const wrap = $('publicGamesList');
+  if (!list || list.length === 0) {
+    wrap.innerHTML = '<div class="public-games-empty">No public games yet — create one!</div>';
+    return;
+  }
+  wrap.innerHTML = '';
+  for (const lobby of list) {
+    const row = document.createElement('div');
+    row.className = 'public-game-row';
+    // No code — public games are joined directly by clicking the row
+    row.innerHTML =
+      `<div>
+         <div class="pg-host">${escapeHtml(lobby.host)}'s game</div>
+         <div class="pg-meta">${modeShort(lobby.mode)} · ${mapShort(lobby.map)} · ${lobby.playerCount}/12 players</div>
+       </div>
+       <div class="pg-join">Join →</div>`;
+    row.addEventListener('click', () => {
+      const username = $('usernameInput').value.trim() || 'Player';
+      socket.emit('joinLobby', { code: lobby.code, username, color: selectedColor });
+    });
+    wrap.appendChild(row);
+  }
+}
+
+socket.on('publicLobbies', renderPublicLobbies);
 
 // ---------- Lobby screen ----------
 $('leaveLobbyBtn').addEventListener('click', () => {
@@ -86,6 +145,9 @@ $('mapSelect').addEventListener('change', (e) => {
 });
 
 function renderLobby() {
+  // Public games don't show a join code — they're discovered via the public list.
+  const codeRow = document.querySelector('.lobby-code-row');
+  if (codeRow) codeRow.style.display = state.isPublic ? 'none' : 'flex';
   $('lobbyCode').textContent = state.lobbyCode || '----';
   // players
   const list = $('playersList');
@@ -130,6 +192,7 @@ socket.on('lobbyJoined', (data) => {
   state.lobbyCode = data.code;
   state.myId = data.you;
   state.hostId = data.hostId;
+  state.isPublic = !!data.isPublic;
   state.players = data.players;
   state.settings = data.settings;
   renderLobby();
@@ -138,6 +201,7 @@ socket.on('lobbyJoined', (data) => {
 
 socket.on('lobbyUpdate', (data) => {
   state.hostId = data.hostId;
+  state.isPublic = !!data.isPublic;
   state.players = data.players;
   state.settings = data.settings;
   if (!data.inGame && screens.game.classList.contains('active')) {
@@ -148,25 +212,56 @@ socket.on('lobbyUpdate', (data) => {
 
 socket.on('gameStart', (data) => {
   state.gameStart = data;
+  state.isPractice = !!data.isPractice;
   state.snapshot = null;
-  // Reset camera to mid-world; render loop will lerp from there
   camera.cx = data.worldW / 2;
   camera.cy = data.worldH / 2;
-  camera.zoom = 0.7;
+  camera.zoom = 0.9;
+  dust.length = 0;
   seedParticles();
   $('gameOver').classList.add('hidden');
   showScreen('game');
   resizeCanvas();
+  // Practice mode: show floating Leave button (no lobby to return to)
+  $('practiceLeaveBtn').classList.toggle('hidden', !state.isPractice);
 });
 
+// Snapshot interpolation: keep the previous snapshot so the renderer can lerp
+// between server ticks. This makes 30 Hz updates look smooth at 60 fps without
+// adding visible input latency (we lerp from last → newest, not from buffer).
+let prevSnap = null;
+let lastSnapAt = 0;
+const TICK_MS = 1000 / 30;
 socket.on('gameState', (snap) => {
+  prevSnap = state.snapshot;
   state.snapshot = snap;
+  lastSnapAt = performance.now();
 });
+
+function getRenderSnap() {
+  const cur = state.snapshot;
+  if (!cur || !prevSnap) return cur;
+  // 0..1 fraction of time elapsed since last snapshot, capped at 1.
+  const t = Math.min(1, (performance.now() - lastSnapAt) / TICK_MS);
+  if (t >= 1) return cur;
+  const prevById = new Map(prevSnap.players.map(p => [p.id, p]));
+  const players = cur.players.map(cp => {
+    const pp = prevById.get(cp.id);
+    if (!pp) return cp;
+    return { ...cp, x: pp.x + (cp.x - pp.x) * t, y: pp.y + (cp.y - pp.y) * t };
+  });
+  return { ...cur, players };
+}
 
 socket.on('gameEnd', ({ result }) => {
   const losers = (result && Array.isArray(result.losers)) ? result.losers : [];
+  const winner = result && result.winner ? result.winner : null;
   let titleText, subText;
-  if (losers.length === 0) {
+  if (winner) {
+    // Someone explicitly won (e.g. infection: original It tagged everyone)
+    titleText = `${winner} wins!`;
+    subText = losers.length ? `${losers.join(', ')} lost.` : '';
+  } else if (losers.length === 0) {
     titleText = 'Game Over';
     subText = 'No one lost.';
   } else if (losers.length === 1) {
@@ -186,6 +281,201 @@ function escapeHtml(s) {
     .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 }
+
+// ===================== Default username =====================
+const NAME_KEY = 'tag-username-v1';
+function rememberedName() {
+  try { return localStorage.getItem(NAME_KEY) || ''; } catch { return ''; }
+}
+function rememberName(n) {
+  try { localStorage.setItem(NAME_KEY, n); } catch {}
+}
+// If user leaves the box blank, generate a unique-ish Player#### default.
+function effectiveUsername() {
+  let n = ($('usernameInput').value || '').trim();
+  if (!n) {
+    n = 'Player' + (1000 + Math.floor(Math.random() * 9000));
+    $('usernameInput').value = n;
+  }
+  rememberName(n);
+  return n;
+}
+
+// Push the home name/color to the server so home-screen chat can attribute it.
+function pushHomeIdentity() {
+  socket.emit('homeIdentity', { username: effectiveUsername(), color: selectedColor });
+}
+
+// ===================== Practice mode =====================
+$('practiceBtn').addEventListener('click', () => {
+  $('practiceModal').classList.remove('hidden');
+});
+$('cancelPracticeBtn').addEventListener('click', () => {
+  $('practiceModal').classList.add('hidden');
+});
+$('startPracticeBtn').addEventListener('click', () => {
+  const map = $('practiceMapSelect').value;
+  socket.emit('createLobby', {
+    username: effectiveUsername(),
+    color: selectedColor,
+    isPublic: false,
+    isPractice: true,
+    map,
+  });
+  $('practiceModal').classList.add('hidden');
+});
+$('practiceLeaveBtn').addEventListener('click', () => {
+  socket.emit('leaveLobby');
+  state.lobbyCode = null;
+  showScreen('home');
+  $('practiceLeaveBtn').classList.add('hidden');
+});
+
+// ===================== Controls remap =====================
+let rebindCapture = null; // { action } while waiting for a key press in modal
+$('controlsBtn').addEventListener('click', () => {
+  renderControls();
+  $('controlsModal').classList.remove('hidden');
+});
+
+// Quick "exit" button — opens about:blank in a new tab.
+$('aboutBlankBtn').addEventListener('click', () => {
+  window.open('about:blank', '_blank');
+});
+$('closeControlsBtn').addEventListener('click', () => {
+  $('controlsModal').classList.add('hidden');
+  rebindCapture = null;
+});
+$('resetControlsBtn').addEventListener('click', () => {
+  bindings = JSON.parse(JSON.stringify(DEFAULT_BINDINGS));
+  saveBindings();
+  renderControls();
+});
+function actionLabel(a) {
+  return { left: 'Move Left', right: 'Move Right', jump: 'Jump', chat: 'Open Chat' }[a] || a;
+}
+function keyLabel(k) {
+  if (k === ' ') return 'Space';
+  if (k.startsWith('Arrow')) return k.replace('Arrow', '') + ' Arrow';
+  return k.toUpperCase();
+}
+function renderControls() {
+  const wrap = $('controlsList');
+  wrap.innerHTML = '';
+  for (const action of ['left', 'right', 'jump', 'chat']) {
+    const row = document.createElement('div');
+    row.className = 'control-row' + (rebindCapture && rebindCapture.action === action ? ' binding' : '');
+    row.innerHTML = `<span class="ctl-label">${actionLabel(action)}</span>
+                     <span class="ctl-key">${bindings[action].map(keyLabel).join(' / ')}</span>`;
+    row.addEventListener('click', () => {
+      rebindCapture = { action };
+      renderControls();
+    });
+    wrap.appendChild(row);
+  }
+  if (rebindCapture) {
+    const note = document.createElement('div');
+    note.className = 'note';
+    note.style.color = '#56cfe1';
+    note.textContent = 'Press a key to bind…';
+    wrap.appendChild(note);
+  }
+}
+window.addEventListener('keydown', (e) => {
+  if (!rebindCapture) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.key === 'Escape') { rebindCapture = null; renderControls(); return; }
+  bindings[rebindCapture.action] = [e.key];
+  saveBindings();
+  rebindCapture = null;
+  renderControls();
+}, true);
+
+// ===================== Chat =====================
+const chatPanel = $('chatPanel');
+const chatMessages = $('chatMessages');
+const chatInput = $('chatInput');
+const MAX_VISIBLE_MSGS = 5;
+const messageBuffer = []; // last N messages
+
+function openChat() {
+  chatPanel.classList.remove('hidden');
+  chatInput.focus();
+  chatInput.select();
+}
+function closeChat() {
+  chatPanel.classList.add('hidden');
+  chatInput.blur();
+}
+$('chatClose').addEventListener('click', closeChat);
+
+chatInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const text = chatInput.value.trim();
+    if (text) {
+      // Make sure server knows our home name when sending from outside a lobby
+      pushHomeIdentity();
+      socket.emit('chat', { text });
+    }
+    chatInput.value = '';
+    chatInput.blur();
+  } else if (e.key === 'Escape') {
+    chatInput.value = '';
+    chatInput.blur();
+  }
+  e.stopPropagation();
+});
+
+// Drag the chat panel by its header
+(function makeChatDraggable() {
+  const header = $('chatHeader');
+  let dragging = false, ox = 0, oy = 0;
+  header.addEventListener('mousedown', (e) => {
+    if (e.target.id === 'chatClose') return;
+    dragging = true;
+    const r = chatPanel.getBoundingClientRect();
+    ox = e.clientX - r.left;
+    oy = e.clientY - r.top;
+    chatPanel.style.right = 'auto';
+    chatPanel.style.bottom = 'auto';
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const x = Math.max(0, Math.min(window.innerWidth - chatPanel.offsetWidth, e.clientX - ox));
+    const y = Math.max(0, Math.min(window.innerHeight - chatPanel.offsetHeight, e.clientY - oy));
+    chatPanel.style.left = x + 'px';
+    chatPanel.style.top = y + 'px';
+  });
+  window.addEventListener('mouseup', () => { dragging = false; });
+})();
+
+function renderChatMessages() {
+  chatMessages.innerHTML = '';
+  // Show last MAX_VISIBLE_MSGS messages
+  const slice = messageBuffer.slice(-MAX_VISIBLE_MSGS);
+  for (const m of slice) {
+    const row = document.createElement('div');
+    row.className = 'chat-msg';
+    row.innerHTML = `<span class="from" style="color:${m.color || '#ffd166'}">${escapeHtml(m.from)}:</span>${escapeHtml(m.text)}`;
+    chatMessages.appendChild(row);
+  }
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+socket.on('chat', (msg) => {
+  // Filter: lobby-scope messages only show for users in the same lobby. Server
+  // already routes these via rooms, so any message we receive is meant for us.
+  messageBuffer.push(msg);
+  if (messageBuffer.length > 30) messageBuffer.splice(0, messageBuffer.length - 30);
+  renderChatMessages();
+  // Auto-pop the panel if a message arrives while we're in a game
+  if (screens.game.classList.contains('active')) {
+    chatPanel.classList.remove('hidden');
+  }
+});
 
 $('backToLobbyBtn').addEventListener('click', () => {
   socket.emit('returnToLobby');
@@ -210,28 +500,72 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 
 // ---------- Input ----------
+// Key bindings persisted to localStorage. Defaults map both arrows AND wasd/space.
+const DEFAULT_BINDINGS = {
+  left:  ['ArrowLeft', 'a'],
+  right: ['ArrowRight', 'd'],
+  jump:  ['ArrowUp', 'w', ' '],
+  chat:  ['Enter'],
+};
+const BINDINGS_KEY = 'tag-bindings-v1';
+function loadBindings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(BINDINGS_KEY));
+    if (saved && saved.left && saved.right && saved.jump) return saved;
+  } catch {}
+  return JSON.parse(JSON.stringify(DEFAULT_BINDINGS));
+}
+function saveBindings() {
+  try { localStorage.setItem(BINDINGS_KEY, JSON.stringify(bindings)); } catch {}
+}
+let bindings = loadBindings();
+
+function bindingFor(rawKey) {
+  // Match a raw `event.key` against the binding sets. Arrow keys are special-
+  // cased exact-match; letters are case-insensitive.
+  const normalized = rawKey.length === 1 ? rawKey.toLowerCase() : rawKey;
+  for (const action in bindings) {
+    for (const k of bindings[action]) {
+      const nk = k.length === 1 ? k.toLowerCase() : k;
+      if (nk === normalized) return action;
+    }
+  }
+  return null;
+}
+
 const keys = { left: false, right: false, up: false };
-function setKey(k, v) {
-  let changed = false;
-  if (k === 'ArrowLeft' || k === 'a' || k === 'A') {
-    if (keys.left !== v) { keys.left = v; changed = true; }
-  }
-  if (k === 'ArrowRight' || k === 'd' || k === 'D') {
-    if (keys.right !== v) { keys.right = v; changed = true; }
-  }
-  if (k === 'ArrowUp' || k === 'w' || k === 'W' || k === ' ') {
-    if (keys.up !== v) { keys.up = v; changed = true; }
-  }
-  if (changed) socket.emit('input', keys);
+function sendInput() { socket.emit('input', keys); }
+function setKey(action, v) {
+  if (action === 'left'  && keys.left  !== v) { keys.left  = v; sendInput(); }
+  if (action === 'right' && keys.right !== v) { keys.right = v; sendInput(); }
+  if (action === 'jump'  && keys.up    !== v) { keys.up    = v; sendInput(); }
 }
 window.addEventListener('keydown', (e) => {
+  // If chat input is focused, swallow keys (let the input handle them).
+  if (document.activeElement === $('chatInput')) return;
+  if (rebindCapture) return; // controls modal is capturing
+  const action = bindingFor(e.key);
+  if (!action) return;
+  if (action === 'chat') {
+    if (screens.home.classList.contains('active') ||
+        screens.lobby.classList.contains('active') ||
+        screens.game.classList.contains('active')) {
+      e.preventDefault();
+      openChat();
+    }
+    return;
+  }
   if (!screens.game.classList.contains('active')) return;
-  if (['ArrowLeft','ArrowRight','ArrowUp',' '].includes(e.key)) e.preventDefault();
-  setKey(e.key, true);
+  e.preventDefault();
+  setKey(action, true);
 });
 window.addEventListener('keyup', (e) => {
+  if (rebindCapture) return;
+  const action = bindingFor(e.key);
+  if (!action) return;
+  if (action === 'chat') return;
   if (!screens.game.classList.contains('active')) return;
-  setKey(e.key, false);
+  setKey(action, false);
 });
 
 // ===================== Camera =====================
@@ -261,9 +595,9 @@ function updateCamera(snap) {
     const zoomY = ch / th;
     targetZoom = Math.min(zoomX, zoomY);
   }
-  // never zoom out below "fit whole world"; cap zoom-in so blobs aren't huge
+  // never zoom out below "fit whole world"; closer zoom-in so blobs are easy to see
   const minZoom = Math.min(cw / ww, ch / wh);
-  const maxZoom = 0.7;
+  const maxZoom = 1.15;
   targetZoom = Math.max(minZoom, Math.min(maxZoom, targetZoom));
 
   // Clamp center so view stays inside the world (when zoom allows)
@@ -319,7 +653,7 @@ function seedParticles() {
   const ww = state.gameStart ? state.gameStart.worldW : WORLD_W_DEFAULT;
   const wh = state.gameStart ? state.gameStart.worldH : WORLD_H_DEFAULT;
   particles.rain = [];
-  for (let i = 0; i < 220; i++) {
+  for (let i = 0; i < 110; i++) {
     particles.rain.push({
       x: Math.random() * ww, y: Math.random() * wh,
       vy: 9 + Math.random() * 5, vx: -1.5 - Math.random(),
@@ -327,17 +661,17 @@ function seedParticles() {
     });
   }
   particles.snow = [];
-  for (let i = 0; i < 280; i++) {
+  for (let i = 0; i < 140; i++) {
     particles.snow.push({
       x: Math.random() * ww, y: Math.random() * wh,
       vy: 1 + Math.random() * 1.8, vx: Math.sin(i) * 0.5,
       r: 2 + Math.random() * 3, ph: Math.random() * Math.PI * 2,
     });
   }
-  // Small floating pumpkins for fall (replaces falling leaves).
+  // Floating pumpkins for fall.
   particles.leaves = [];
   const colors = ['#ee8a3b', '#d97a2b', '#e88336', '#ffb347', '#cf6f3b'];
-  for (let i = 0; i < 70; i++) {
+  for (let i = 0; i < 40; i++) {
     particles.leaves.push({
       x: Math.random() * ww, y: Math.random() * wh,
       vy: 0.5 + Math.random() * 1.0, vx: 0.8 + Math.random() * 1.2,
@@ -540,68 +874,42 @@ function drawWalls(map) {
 
 function drawPlatform(plat, map, isGround) {
   const { x, y, w, h } = plat;
-  // Floating platforms get rounded corners; ground keeps a flat bottom edge.
-  const r = isGround ? 0 : Math.min(8, h / 2);
+  // Modern sleek platform palette — solid themed body with soft highlight + shadow.
+  // Rounded corners for all floating platforms; ground stays flat-bottomed.
+  const r = isGround ? 0 : Math.min(10, h / 2);
 
-  if (map === 'summer') {
-    if (isGround) {
-      ctx.fillStyle = '#ecd092';
-      ctx.fillRect(x, y, w, h);
-      ctx.fillStyle = '#d6b97a';
-      for (let i = 0; i < w; i += 12) ctx.fillRect(x + i, y + 4, 6, 2);
-    } else {
-      // sand-colored rounded plank with green palm-leaf top
-      ctx.fillStyle = '#8b5a2b';
-      roundRect(x, y, w, h, r); ctx.fill();
-      ctx.fillStyle = '#3aa55a';
-      ctx.beginPath();
-      ctx.ellipse(x + w/2, y + h/2, w/2, h * 1.2, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#52c476';
-      roundRectTop(x, y, w, 5, r);
-    }
-  } else if (map === 'spring') {
-    if (isGround) {
-      ctx.fillStyle = '#5fa84a';
-      ctx.fillRect(x, y, w, h);
-      ctx.fillStyle = '#7bc15c';
-      ctx.fillRect(x, y, w, 6);
-    } else {
-      ctx.fillStyle = '#7d4f2b';
-      roundRect(x, y, w, h, r); ctx.fill();
-      ctx.fillStyle = '#7bc15c';
-      roundRectTop(x, y, w, 7, r);
-      // tufts
-      ctx.fillStyle = '#9adc7a';
-      for (let i = 0; i < w; i += 14) {
-        ctx.fillRect(x + i + 2, y - 3, 4, 4);
-      }
-    }
-  } else if (map === 'fall') {
-    if (isGround) {
-      ctx.fillStyle = '#8a5a2a';
-      ctx.fillRect(x, y, w, h);
-      ctx.fillStyle = '#b8763a';
-      ctx.fillRect(x, y, w, 6);
-    } else {
-      ctx.fillStyle = '#6e4423';
-      roundRect(x, y, w, h, r); ctx.fill();
-      ctx.fillStyle = '#d97a3c';
-      roundRectTop(x, y, w, 6, r);
-    }
-  } else if (map === 'winter') {
-    if (isGround) {
-      ctx.fillStyle = '#dde7f0';
-      ctx.fillRect(x, y, w, h);
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(x, y, w, 8);
-    } else {
-      ctx.fillStyle = '#7d8b9c';
-      roundRect(x, y, w, h, r); ctx.fill();
-      ctx.fillStyle = '#fff';
-      roundRectTop(x - 2, y, w + 4, 10, r);
-    }
+  // Theme palette
+  const themes = {
+    summer: { ground: '#ecd092', groundTop: '#f3dca8', body: '#e8b86a', highlight: '#ffd99a', shadow: '#a87b3f' },
+    spring: { ground: '#5fa84a', groundTop: '#7bc15c', body: '#6cbf4b', highlight: '#a8e08b', shadow: '#3d7e2c' },
+    fall:   { ground: '#8a5a2a', groundTop: '#b8763a', body: '#c46f30', highlight: '#e89a55', shadow: '#7a3f12' },
+    winter: { ground: '#dde7f0', groundTop: '#ffffff', body: '#a9bdd0', highlight: '#e7eef7', shadow: '#6c7e93' },
+  };
+  const th = themes[map] || themes.summer;
+
+  if (isGround) {
+    ctx.fillStyle = th.ground;
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = th.groundTop;
+    ctx.fillRect(x, y, w, 6);
+    return;
   }
+
+  // Drop shadow under the platform for depth
+  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  roundRect(x, y + 3, w, h, r); ctx.fill();
+
+  // Body
+  ctx.fillStyle = th.body;
+  roundRect(x, y, w, h, r); ctx.fill();
+
+  // Top highlight strip (very thin, follows rounded silhouette)
+  ctx.fillStyle = th.highlight;
+  roundRectTop(x, y, w, Math.max(3, h * 0.30), r);
+
+  // Bottom inner shadow (subtle)
+  ctx.fillStyle = 'rgba(0,0,0,0.12)';
+  ctx.fillRect(x + r * 0.4, y + h - 2, w - r * 0.8, 2);
 }
 
 // Rounded rect with corners only on the top — used for the colored top strip
@@ -1000,13 +1308,7 @@ function drawPlayer(p, t, isMe, now, map) {
   ctx.arc(cx, y + sz * 0.78, sz * 0.06, 0.15 * Math.PI, 0.85 * Math.PI);
   ctx.stroke();
 
-  // "It" red outline around the silhouette
-  if (p.isIt) {
-    ctx.strokeStyle = '#ff2d2d';
-    ctx.lineWidth = 3;
-    roundRect(x + sz * 0.08, y + sz * 0.10, sz * 0.84, sz * 0.82, sz * 0.26);
-    ctx.stroke();
-  }
+  // (No red outline anymore — the floating IT label + arrow indicates the tagger.)
 
   // Frozen overlay
   if (p.frozen) {
@@ -1085,49 +1387,60 @@ const dust = [];
 let lastDustEmit = new WeakMap(); // throttle per player
 
 function maybeEmitDust(p, dir) {
-  // Throttle: each player emits at most ~every 70ms while running
+  // Throttle: each player emits ~every 45ms while running, two puffs per emit.
   const last = lastDustEmit.get(p) || 0;
   const nowMs = performance.now();
-  if (nowMs - last < 70) return;
+  if (nowMs - last < 45) return;
   lastDustEmit.set(p, nowMs);
   const sz = state.gameStart.playerSize;
-  // Spawn just behind the trailing foot, near the ground
   const fx = p.x + sz / 2 - dir * sz * 0.30;
   const fy = p.y + sz - 4;
-  dust.push({
-    x: fx + (Math.random() - 0.5) * 4,
-    y: fy + (Math.random() - 0.5) * 2,
-    vx: -dir * (0.3 + Math.random() * 0.4),
-    vy: -0.5 - Math.random() * 0.6,
-    life: 1.0,
-    decay: 0.025 + Math.random() * 0.02,
-    r: 2.5 + Math.random() * 2,
-  });
+  for (let k = 0; k < 2; k++) {
+    dust.push({
+      x: fx + (Math.random() - 0.5) * 6,
+      y: fy + (Math.random() - 0.5) * 3,
+      vx: -dir * (0.4 + Math.random() * 0.6),
+      vy: -0.7 - Math.random() * 0.8,
+      life: 1.0,
+      decay: 0.013 + Math.random() * 0.012, // slower fade → trail lingers longer
+      r: 4 + Math.random() * 3,             // larger puffs → deeper visual
+    });
+  }
 }
 
 function updateDust() {
+  // Cap the array so it can't grow unbounded if someone holds run forever.
+  if (dust.length > 400) dust.splice(0, dust.length - 400);
   for (let i = dust.length - 1; i >= 0; i--) {
     const d = dust[i];
     d.x += d.vx;
     d.y += d.vy;
-    d.vy += 0.04; // light gravity so it settles
+    d.vy += 0.05;
     d.life -= d.decay;
     if (d.life <= 0) dust.splice(i, 1);
   }
 }
 
 function drawDust(map) {
-  // Subtle theme tint so dust matches the ground.
   let tint;
   switch (map) {
-    case 'summer': tint = '218,196,140'; break;
-    case 'spring': tint = '180,210,160'; break;
-    case 'fall':   tint = '170,120,80'; break;
-    case 'winter': tint = '230,236,244'; break;
-    default:       tint = '200,195,180';
+    case 'summer': tint = '180,150,90'; break;
+    case 'spring': tint = '120,180,130'; break;
+    case 'fall':   tint = '140,90,55';  break;
+    case 'winter': tint = '210,225,240'; break;
+    default:       tint = '170,160,130';
   }
+  // Viewport cull — skip particles outside the visible world rect.
+  const cw = canvas.width / camera.zoom;
+  const ch = canvas.height / camera.zoom;
+  const minX = camera.cx - cw / 2 - 16;
+  const maxX = camera.cx + cw / 2 + 16;
+  const minY = camera.cy - ch / 2 - 16;
+  const maxY = camera.cy + ch / 2 + 16;
   for (const d of dust) {
-    ctx.fillStyle = `rgba(${tint},${Math.max(0, d.life * 0.55)})`;
+    if (d.x < minX || d.x > maxX || d.y < minY || d.y > maxY) continue;
+    const a = Math.max(0, d.life * 0.85);
+    ctx.fillStyle = `rgba(${tint},${a})`;
     ctx.beginPath();
     ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
     ctx.fill();
@@ -1152,10 +1465,28 @@ function drawPlayerLabel(p, now) {
   ctx.strokeText(p.username, top.x, ny);
   ctx.fillText(p.username, top.x, ny);
   if (p.isIt) {
+    // Bobbing red downward arrow + "IT" label that points at the tagger
+    const t = performance.now();
+    const bob = Math.sin(t * 0.006) * 3;
+    const arrowY = ny - 14 + bob;       // bottom tip of arrow, just above name
+    const labelY = arrowY - 18;         // "IT" sits above the arrow
+    // Arrow (▼)
+    ctx.fillStyle = '#ff2d2d';
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(top.x - 8, arrowY - 12);
+    ctx.lineTo(top.x + 8, arrowY - 12);
+    ctx.lineTo(top.x,     arrowY);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // "IT" text above arrow
     ctx.font = 'bold 14px system-ui';
     ctx.fillStyle = '#ff2d2d';
-    ctx.strokeText('IT', top.x, ny - 16);
-    ctx.fillText('IT', top.x, ny - 16);
+    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+    ctx.lineWidth = 3;
+    ctx.strokeText('IT', top.x, labelY);
+    ctx.fillText('IT', top.x, labelY);
   }
   ctx.globalAlpha = 1.0;
 }
@@ -1187,11 +1518,16 @@ function activePowerLabel(p, now) {
 }
 
 // ---------- Main render loop ----------
+// 60 FPS cap — on high-refresh displays, skip frames so we don't burn CPU drawing
+// the same world state 120+ times per second.
+let lastRender = 0;
 function render(t) {
   requestAnimationFrame(render);
+  if (t - lastRender < 16) return;
+  lastRender = t;
   if (!screens.game.classList.contains('active')) return;
   if (!state.gameStart) return;
-  const snap = state.snapshot;
+  const snap = getRenderSnap();
   const map = state.gameStart && (snap ? snap.map : state.settings.map);
 
   // Clear viewport with neutral letterbox color (visible if camera shows beyond world)
@@ -1242,13 +1578,20 @@ function render(t) {
   if (snap) {
     snap.players.forEach(p => drawPlayerLabel(p, snap.now));
 
-    const remaining = Math.max(0, snap.endsAt - snap.now);
     const timeEl = $('hudTime');
-    timeEl.textContent = fmtTime(remaining);
-    timeEl.classList.toggle('warning', remaining <= 30000);
-    $('hudMode').textContent = modeLabel(snap.mode);
-    const me = snap.players.find(p => p.id === state.myId);
-    $('hudPower').textContent = activePowerLabel(me, snap.now);
+    if (state.isPractice) {
+      timeEl.textContent = 'Practice';
+      timeEl.classList.remove('warning');
+      $('hudMode').textContent = '';
+      $('hudPower').textContent = '';
+    } else {
+      const remaining = Math.max(0, snap.endsAt - snap.now);
+      timeEl.textContent = fmtTime(remaining);
+      timeEl.classList.toggle('warning', remaining <= 30000);
+      $('hudMode').textContent = modeLabel(snap.mode);
+      const me = snap.players.find(p => p.id === state.myId);
+      $('hudPower').textContent = activePowerLabel(me, snap.now);
+    }
   } else {
     $('hudTime').textContent = '--:--';
     $('hudTime').classList.remove('warning');

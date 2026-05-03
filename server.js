@@ -28,7 +28,7 @@ const TAG_COOLDOWN_MS = 2000;
 const POWERUP_INTERVAL_MS = 10000;
 const POWERUP_DURATION_MS = 6000;
 const SHIELD_DURATION_MS = 5000;
-const FREEZE_BOUNCE_FACTOR = 1.7; // beach umbrella
+const FREEZE_BOUNCE_FACTOR = 2.05; // springs — strong enough to reach top tier
 
 // 24 platforms per map — same count + ground + 4 wall-attached "shelves" everywhere,
 // but the 19 floating platforms are scattered differently per map so each feels distinct.
@@ -40,96 +40,119 @@ const COMMON_PLATFORMS = [
   { x: 2290, y: 470,  w: 110,  h: 16 }, // right wall high shelf
 ];
 
+// 5 low + 5 mid-low + 3 mid + 3 high + 3 top = 19 floating + 5 fixed = 24.
+// Top tier now has THREE platforms spread across left/center/right so the upper
+// area isn't sparse and the world doesn't feel left-heavy.
 const SUMMER_PLATFORMS = [
   ...COMMON_PLATFORMS,
-  { x: 180,  y: 970,  w: 200, h: 16 },
-  { x: 480,  y: 950,  w: 180, h: 16 },
-  { x: 760,  y: 1000, w: 200, h: 16 },
-  { x: 1080, y: 930,  w: 200, h: 16 },
-  { x: 1380, y: 990,  w: 200, h: 16 },
-  { x: 1820, y: 940,  w: 220, h: 16 },
-  { x: 340,  y: 870,  w: 180, h: 16 },
-  { x: 680,  y: 830,  w: 200, h: 16 },
-  { x: 1140, y: 850,  w: 220, h: 16 },
-  { x: 1500, y: 820,  w: 200, h: 16 },
-  { x: 1900, y: 820,  w: 200, h: 16 },
-  { x: 240,  y: 720,  w: 180, h: 16 },
-  { x: 920,  y: 700,  w: 220, h: 16 },
-  { x: 1340, y: 720,  w: 200, h: 16 },
-  { x: 1700, y: 700,  w: 220, h: 16 },
-  { x: 350,  y: 580,  w: 200, h: 16 },
-  { x: 1700, y: 580,  w: 220, h: 16 },
-  { x: 820,  y: 460,  w: 200, h: 16 },
-  { x: 1380, y: 420,  w: 240, h: 16 },
+  // Low (5)
+  { x: 220,  y: 980,  w: 200, h: 16 },
+  { x: 560,  y: 950,  w: 200, h: 16 },
+  { x: 1100, y: 990,  w: 200, h: 16 },
+  { x: 1500, y: 960,  w: 200, h: 16 },
+  { x: 1820, y: 980,  w: 220, h: 16 },
+  // Mid-low (5)
+  { x: 340,  y: 850,  w: 200, h: 16 },
+  { x: 820,  y: 830,  w: 200, h: 16 },
+  { x: 1280, y: 850,  w: 200, h: 16 },
+  { x: 1660, y: 830,  w: 200, h: 16 },
+  { x: 1980, y: 880,  w: 220, h: 16 },
+  // Mid (3)
+  { x: 220,  y: 720,  w: 200, h: 16 },
+  { x: 1240, y: 730,  w: 200, h: 16 },
+  { x: 1700, y: 710,  w: 220, h: 16 },
+  // High (3) — tightened so adjacent pairs are within jump reach
+  { x: 260,  y: 600,  w: 220, h: 16 },
+  { x: 820,  y: 580,  w: 240, h: 16 },
+  { x: 1380, y: 600,  w: 220, h: 16 },
+  // Top (3)
+  { x: 340,  y: 460,  w: 240, h: 16 },
+  { x: 940,  y: 440,  w: 240, h: 16 },
+  { x: 1700, y: 470,  w: 240, h: 16 },
 ];
 
 const SPRING_PLATFORMS = [
   ...COMMON_PLATFORMS,
-  { x: 200,  y: 1000, w: 220, h: 16 },
-  { x: 540,  y: 940,  w: 200, h: 16 },
-  { x: 860,  y: 970,  w: 180, h: 16 },
-  { x: 1140, y: 1000, w: 200, h: 16 },
-  { x: 1450, y: 950,  w: 220, h: 16 },
-  { x: 1820, y: 980,  w: 200, h: 16 },
-  { x: 380,  y: 850,  w: 200, h: 16 },
-  { x: 760,  y: 880,  w: 200, h: 16 },
-  { x: 1080, y: 830,  w: 220, h: 16 },
-  { x: 1460, y: 870,  w: 200, h: 16 },
-  { x: 1840, y: 850,  w: 200, h: 16 },
-  { x: 200,  y: 700,  w: 180, h: 16 },
-  { x: 540,  y: 730,  w: 200, h: 16 },
-  { x: 1100, y: 720,  w: 220, h: 16 },
-  { x: 1620, y: 700,  w: 220, h: 16 },
-  { x: 380,  y: 590,  w: 200, h: 16 },
-  { x: 1340, y: 560,  w: 240, h: 16 },
-  { x: 700,  y: 470,  w: 200, h: 16 },
-  { x: 1700, y: 440,  w: 220, h: 16 },
+  // Low (5)
+  { x: 200,  y: 990,  w: 220, h: 16 },
+  { x: 540,  y: 950,  w: 200, h: 16 },
+  { x: 880,  y: 970,  w: 200, h: 16 },
+  { x: 1240, y: 950,  w: 200, h: 16 },
+  { x: 1740, y: 950,  w: 220, h: 16 },
+  // Mid-low (5)
+  { x: 380,  y: 870,  w: 200, h: 16 },
+  { x: 740,  y: 830,  w: 220, h: 16 },
+  { x: 1080, y: 840,  w: 200, h: 16 },
+  { x: 1440, y: 820,  w: 200, h: 16 },
+  { x: 1860, y: 850,  w: 200, h: 16 },
+  // Mid (3)
+  { x: 220,  y: 730,  w: 200, h: 16 },
+  { x: 1100, y: 710,  w: 220, h: 16 },
+  { x: 1620, y: 720,  w: 220, h: 16 },
+  // High (3) — tightened
+  { x: 560,  y: 590,  w: 220, h: 16 },
+  { x: 1080, y: 580,  w: 240, h: 16 },
+  { x: 1620, y: 600,  w: 220, h: 16 },
+  // Top (3)
+  { x: 220,  y: 460,  w: 200, h: 16 },
+  { x: 1000, y: 440,  w: 240, h: 16 },
+  { x: 1700, y: 470,  w: 220, h: 16 },
 ];
 
 const FALL_PLATFORMS = [
   ...COMMON_PLATFORMS,
-  { x: 200,  y: 980,  w: 180, h: 16 },
-  { x: 460,  y: 940,  w: 200, h: 16 },
-  { x: 740,  y: 990,  w: 200, h: 16 },
-  { x: 1040, y: 950,  w: 200, h: 16 },
-  { x: 1340, y: 1000, w: 220, h: 16 },
-  { x: 1900, y: 970,  w: 220, h: 16 },
-  { x: 320,  y: 870,  w: 180, h: 16 },
-  { x: 620,  y: 850,  w: 200, h: 16 },
-  { x: 940,  y: 820,  w: 200, h: 16 },
-  { x: 1260, y: 830,  w: 200, h: 16 },
-  { x: 1620, y: 870,  w: 200, h: 16 },
-  { x: 200,  y: 720,  w: 200, h: 16 },
-  { x: 540,  y: 700,  w: 200, h: 16 },
-  { x: 920,  y: 720,  w: 220, h: 16 },
-  { x: 1500, y: 740,  w: 220, h: 16 },
-  { x: 600,  y: 590,  w: 220, h: 16 },
-  { x: 1380, y: 600,  w: 220, h: 16 },
-  { x: 880,  y: 470,  w: 240, h: 16 },
-  { x: 1540, y: 440,  w: 220, h: 16 },
+  // Low (5)
+  { x: 240,  y: 970,  w: 200, h: 16 },
+  { x: 600,  y: 990,  w: 200, h: 16 },
+  { x: 940,  y: 950,  w: 200, h: 16 },
+  { x: 1300, y: 990,  w: 200, h: 16 },
+  { x: 1820, y: 970,  w: 220, h: 16 },
+  // Mid-low (5)
+  { x: 320,  y: 830,  w: 220, h: 16 },
+  { x: 720,  y: 870,  w: 200, h: 16 },
+  { x: 1080, y: 830,  w: 200, h: 16 },
+  { x: 1500, y: 840,  w: 220, h: 16 },
+  { x: 1900, y: 830,  w: 220, h: 16 },
+  // Mid (3) — tightened
+  { x: 380,  y: 700,  w: 220, h: 16 },
+  { x: 940,  y: 720,  w: 220, h: 16 },
+  { x: 1500, y: 710,  w: 220, h: 16 },
+  // High (3) — tightened
+  { x: 260,  y: 600,  w: 220, h: 16 },
+  { x: 740,  y: 590,  w: 220, h: 16 },
+  { x: 1300, y: 600,  w: 220, h: 16 },
+  // Top (3)
+  { x: 380,  y: 470,  w: 220, h: 16 },
+  { x: 1000, y: 450,  w: 240, h: 16 },
+  { x: 1700, y: 460,  w: 220, h: 16 },
 ];
 
 const WINTER_PLATFORMS = [
   ...COMMON_PLATFORMS,
+  // Low (5)
   { x: 220,  y: 990,  w: 220, h: 16 },
-  { x: 560,  y: 950,  w: 180, h: 16 },
-  { x: 900,  y: 1010, w: 200, h: 16 },
-  { x: 1200, y: 940,  w: 220, h: 16 },
-  { x: 1540, y: 980,  w: 200, h: 16 },
-  { x: 1900, y: 950,  w: 200, h: 16 },
+  { x: 580,  y: 950,  w: 200, h: 16 },
+  { x: 940,  y: 980,  w: 200, h: 16 },
+  { x: 1300, y: 950,  w: 220, h: 16 },
+  { x: 1700, y: 990,  w: 200, h: 16 },
+  // Mid-low (5)
   { x: 360,  y: 850,  w: 200, h: 16 },
   { x: 720,  y: 820,  w: 220, h: 16 },
-  { x: 1080, y: 870,  w: 200, h: 16 },
-  { x: 1440, y: 830,  w: 200, h: 16 },
-  { x: 1820, y: 850,  w: 200, h: 16 },
-  { x: 220,  y: 720,  w: 200, h: 16 },
-  { x: 1080, y: 700,  w: 220, h: 16 },
-  { x: 1500, y: 720,  w: 200, h: 16 },
-  { x: 1900, y: 700,  w: 200, h: 16 },
-  { x: 480,  y: 580,  w: 220, h: 16 },
-  { x: 1640, y: 580,  w: 220, h: 16 },
-  { x: 800,  y: 460,  w: 240, h: 16 },
-  { x: 1380, y: 420,  w: 240, h: 16 },
+  { x: 1100, y: 850,  w: 200, h: 16 },
+  { x: 1500, y: 820,  w: 200, h: 16 },
+  { x: 1900, y: 860,  w: 220, h: 16 },
+  // Mid (3) — tightened
+  { x: 340,  y: 720,  w: 200, h: 16 },
+  { x: 880,  y: 710,  w: 220, h: 16 },
+  { x: 1320, y: 720,  w: 220, h: 16 },
+  // High (3) — tightened
+  { x: 660,  y: 590,  w: 220, h: 16 },
+  { x: 1100, y: 580,  w: 220, h: 16 },
+  { x: 1620, y: 600,  w: 220, h: 16 },
+  // Top (3)
+  { x: 240,  y: 460,  w: 200, h: 16 },
+  { x: 1080, y: 440,  w: 240, h: 16 },
+  { x: 1700, y: 470,  w: 220, h: 16 },
 ];
 
 const PLATFORMS_BY_MAP = {
@@ -145,37 +168,20 @@ function getPlatforms(lobby) {
 
 // Map-specific objects (hiding + bouncy)
 // type: 'hide' covers player visually; 'bouncy' boosts jump on top
-// Springs are placed in clear vertical columns so the bounce isn't blocked by
-// a low-tier platform overhead. Both x-ranges are also clear of every spawn column.
+// Springs sit in vertical columns that are clear of every overhead platform in
+// every map, and clear of every spawn column. Bounce is now strong enough to
+// reach the top tier directly.
 const COMMON_SPRINGS = [
   { type: 'bouncy', x: 115,  y: 1010, w: 60, h: 50 },
-  { type: 'bouncy', x: 2120, y: 1010, w: 60, h: 50 },
+  { type: 'bouncy', x: 2200, y: 1010, w: 60, h: 50 },
 ];
 
+// Hide objects (trees / snowmen / pumpkin piles) removed for now per request.
 const MAP_OBJECTS = {
-  summer: [
-    ...COMMON_SPRINGS,
-  ],
-  spring: [
-    // Trees in low-platform gaps; none sit on a spawn column for any player count
-    { type: 'hide', x: 80,   y: 900, w: 90, h: 160, kind: 'tree' },
-    { type: 'hide', x: 435,  y: 900, w: 90, h: 160, kind: 'tree' },
-    { type: 'hide', x: 1050, y: 900, w: 90, h: 160, kind: 'tree' },
-    ...COMMON_SPRINGS,
-  ],
-  fall: [
-    // Pumpkin piles sit on top of fall-map platforms
-    { type: 'hide', x: 980, y: 770, w: 110, h: 50, kind: 'pumpkin' }, // on (940,820)
-    { type: 'hide', x: 960, y: 670, w: 110, h: 50, kind: 'pumpkin' }, // on (920,720)
-    ...COMMON_SPRINGS,
-  ],
-  winter: [
-    // Snowmen on ground in winter-map gaps (none on spawn columns)
-    { type: 'hide', x: 140,  y: 960, w: 60, h: 100, kind: 'snowman' },
-    { type: 'hide', x: 1100, y: 960, w: 60, h: 100, kind: 'snowman' },
-    { type: 'hide', x: 1840, y: 960, w: 60, h: 100, kind: 'snowman' },
-    ...COMMON_SPRINGS,
-  ],
+  summer: [...COMMON_SPRINGS],
+  spring: [...COMMON_SPRINGS],
+  fall:   [...COMMON_SPRINGS],
+  winter: [...COMMON_SPRINGS],
 };
 
 // ---------- Lobby store ----------
@@ -189,9 +195,11 @@ function genCode() {
   return code;
 }
 
-function makeLobby(hostId) {
+function makeLobby(hostId, isPublic, isPractice) {
   return {
     hostId,
+    isPublic: !!isPublic,
+    isPractice: !!isPractice,
     players: {}, // socketId -> player
     settings: {
       mode: 'normal', // normal | freeze | infection
@@ -199,13 +207,46 @@ function makeLobby(hostId) {
       map: 'summer',
     },
     inGame: false,
-    state: null, // game state when inGame
+    state: null,
   };
+}
+
+function defaultUsername() {
+  return 'Player' + (1000 + Math.floor(Math.random() * 9000));
+}
+
+// Validate / normalise a username. Empty → unique default name.
+function cleanName(s) {
+  s = String(s || '').trim().slice(0, 16);
+  return s || defaultUsername();
+}
+
+// Public-lobby browser list — only lobbies marked isPublic and not yet in-game.
+function publicLobbiesList() {
+  const out = [];
+  for (const code in lobbies) {
+    const l = lobbies[code];
+    if (!l.isPublic || l.inGame) continue;
+    const host = l.players[l.hostId];
+    out.push({
+      code,
+      host: host ? host.username : 'host',
+      playerCount: Object.keys(l.players).length,
+      mode: l.settings.mode,
+      map: l.settings.map,
+    });
+  }
+  return out;
+}
+
+function broadcastPublicLobbies() {
+  io.to('home').emit('publicLobbies', publicLobbiesList());
 }
 
 function publicLobby(lobby) {
   return {
     hostId: lobby.hostId,
+    isPublic: !!lobby.isPublic,
     players: Object.values(lobby.players).map(p => ({
       id: p.id, username: p.username, color: p.color,
     })),
@@ -223,8 +264,9 @@ function findLobbyOf(socketId) {
 
 // ---------- Game state helpers ----------
 function spawnPlayerAt(i, total) {
-  // spread spawn points across ground (top of ground - player size)
-  const margin = 200;
+  // Spread spawn points across ground. Margin chosen so the rightmost spawn
+  // column never overlaps the right spring at x=2200.
+  const margin = 240;
   const span = WORLD_W - margin * 2;
   const step = total > 1 ? span / (total - 1) : 0;
   return { x: margin + i * step, y: 1060 - PLAYER_SIZE - 4 };
@@ -232,17 +274,20 @@ function spawnPlayerAt(i, total) {
 
 function startGame(lobby) {
   const ids = Object.keys(lobby.players);
-  if (ids.length < 2) return false;
-  const itId = ids[Math.floor(Math.random() * ids.length)];
+  // Practice mode runs solo; everyone else needs ≥ 2 players.
+  if (!lobby.isPractice && ids.length < 2) return false;
+  if (lobby.isPractice && ids.length < 1) return false;
+  const itId = lobby.isPractice ? null : ids[Math.floor(Math.random() * ids.length)];
 
   ids.forEach((id, i) => {
     const p = lobby.players[id];
-    const pos = spawnPlayerAt(i, ids.length);
+    const pos = spawnPlayerAt(i, Math.max(ids.length, 2));
     p.x = pos.x;
     p.y = pos.y;
     p.vx = 0; p.vy = 0;
     p.onGround = false;
     p.input = { left: false, right: false, up: false };
+    p.wasJumpPressed = false;
     p.isIt = (id === itId);
     p.frozen = false;
     p.cantTag = null; // socketId we can't tag (cooldown)
@@ -259,8 +304,12 @@ function startGame(lobby) {
   lobby.inGame = true;
   lobby.state = {
     startedAt: Date.now(),
-    endsAt: Date.now() + lobby.settings.timeLimit * 1000,
-    powerups: [], // {id, type, x, y, w, h}
+    // Practice mode has no time limit — set far in the future.
+    endsAt: lobby.isPractice
+      ? Date.now() + 1000 * 60 * 60 * 24
+      : Date.now() + lobby.settings.timeLimit * 1000,
+    originalItId: itId, // remembered so Infection can name the original chaser
+    powerups: [],
     nextPowerupAt: Date.now() + POWERUP_INTERVAL_MS,
     powerupSeq: 1,
     ended: false,
@@ -308,7 +357,10 @@ function physicsStep(lobby) {
       if (ax < 0) p.facing = -1;
       else if (ax > 0) p.facing = 1;
 
-      if (p.input.up && p.onGround) {
+      // Edge-triggered jump: only fires on a fresh up-press, not while held.
+      const jumpPressed = p.input.up && !p.wasJumpPressed;
+      p.wasJumpPressed = !!p.input.up;
+      if (jumpPressed && p.onGround) {
         p.vy = JUMP_V * jumpMul;
         p.onGround = false;
       }
@@ -515,6 +567,22 @@ function checkEnd(lobby) {
     }
   }
 
+  if (mode === 'infection') {
+    // Early-end: all players are It (everyone got tagged) → original It wins.
+    const allIt = players.length > 1 && players.every(p => p.isIt);
+    if (allIt) {
+      const orig = lobby.players[lobby.state.originalItId];
+      endGame(lobby, {
+        reason: 'all-infected',
+        winner: orig ? orig.username : null,
+        losers: players
+          .filter(p => p.id !== lobby.state.originalItId)
+          .map(p => p.username),
+      });
+      return;
+    }
+  }
+
   if (now >= lobby.state.endsAt) {
     if (mode === 'normal') {
       const it = players.find(p => p.isIt);
@@ -531,11 +599,15 @@ function checkEnd(lobby) {
           losers: players.filter(p => p.isIt).map(p => p.username),
         });
       } else {
-        // Everyone got infected → all the (formerly survivor) infected players lost.
-        // We can't tell the original "It" apart from later infectees, so call them all losers.
+        // Everyone got infected → the player who was "It" first wins (they
+        // tagged everyone). Everyone else is a loser.
+        const orig = lobby.players[lobby.state.originalItId];
         endGame(lobby, {
-          reason: 'time',
-          losers: players.map(p => p.username),
+          reason: 'all-infected',
+          winner: orig ? orig.username : null,
+          losers: players
+            .filter(p => p.id !== lobby.state.originalItId)
+            .map(p => p.username),
         });
       }
     } else if (mode === 'freeze') {
@@ -565,16 +637,17 @@ setInterval(() => {
     if (!lobby.inGame || !lobby.state || lobby.state.ended) continue;
 
     physicsStep(lobby);
-    resolveContacts(lobby);
 
-    // Powerup spawning
-    if (now >= lobby.state.nextPowerupAt) {
-      spawnPowerup(lobby);
-      lobby.state.nextPowerupAt = now + POWERUP_INTERVAL_MS;
+    // Practice mode: solo, no tagging, no powerups, no end conditions.
+    if (!lobby.isPractice) {
+      resolveContacts(lobby);
+      if (now >= lobby.state.nextPowerupAt) {
+        spawnPowerup(lobby);
+        lobby.state.nextPowerupAt = now + POWERUP_INTERVAL_MS;
+      }
+      pickupPowerups(lobby);
+      checkEnd(lobby);
     }
-    pickupPowerups(lobby);
-
-    checkEnd(lobby);
 
     // Broadcast state
     const snap = {
@@ -601,37 +674,102 @@ setInterval(() => {
 
 // ---------- Socket.io ----------
 io.on('connection', (socket) => {
-  socket.on('createLobby', ({ username, color }) => {
+  // Every freshly-connected socket is on the home screen by default.
+  socket.join('home');
+  socket.emit('publicLobbies', publicLobbiesList());
+
+  socket.on('createLobby', ({ username, color, isPublic, isPractice, map }) => {
     const code = genCode();
-    const lobby = makeLobby(socket.id);
+    const lobby = makeLobby(socket.id, isPublic, isPractice);
+    // Apply requested map BEFORE auto-starting (fixes practice race condition
+    // where the map dropdown change arrived after gameStart).
+    if (map && ['summer','spring','fall','winter'].includes(map)) {
+      lobby.settings.map = map;
+    }
     lobby.players[socket.id] = {
       id: socket.id,
-      username: (username || 'Player').slice(0, 16),
+      username: cleanName(username),
       color: color || '#ff5577',
     };
     lobbies[code] = lobby;
+    socket.leave('home');
     socket.join('lobby:' + code);
     socket.data.lobbyCode = code;
     socket.emit('lobbyJoined', { code, you: socket.id, ...publicLobby(lobby) });
     io.to('lobby:' + code).emit('lobbyUpdate', publicLobby(lobby));
+    if (lobby.isPublic) broadcastPublicLobbies();
+
+    // Practice: auto-start the game so the player goes straight in.
+    if (lobby.isPractice) {
+      if (startGame(lobby)) {
+        io.to('lobby:' + code).emit('gameStart', {
+          settings: lobby.settings,
+          platforms: getPlatforms(lobby),
+          objects: MAP_OBJECTS[lobby.settings.map] || [],
+          worldW: WORLD_W, worldH: WORLD_H, wallW: WALL_W,
+          playerSize: PLAYER_SIZE,
+          isPractice: true,
+        });
+      }
+    }
   });
 
   socket.on('joinLobby', ({ code, username, color }) => {
     code = String(code || '').trim();
     const lobby = lobbies[code];
     if (!lobby) return socket.emit('errorMsg', 'Lobby not found.');
+    if (lobby.isPractice) return socket.emit('errorMsg', 'Cannot join a practice game.');
     if (lobby.inGame) return socket.emit('errorMsg', 'Game already in progress.');
     if (Object.keys(lobby.players).length >= 12)
       return socket.emit('errorMsg', 'Lobby full.');
     lobby.players[socket.id] = {
       id: socket.id,
-      username: (username || 'Player').slice(0, 16),
+      username: cleanName(username),
       color: color || '#55aaff',
     };
+    socket.leave('home');
     socket.join('lobby:' + code);
     socket.data.lobbyCode = code;
     socket.emit('lobbyJoined', { code, you: socket.id, ...publicLobby(lobby) });
     io.to('lobby:' + code).emit('lobbyUpdate', publicLobby(lobby));
+    if (lobby.isPublic) broadcastPublicLobbies();
+  });
+
+  // ---------- Chat ----------
+  // Scope: when in a lobby/game, message goes to that lobby room. Otherwise it
+  // goes to the public 'home' room (visible on the title screen).
+  socket.on('chat', ({ text }) => {
+    text = String(text || '').slice(0, 200).trim();
+    if (!text) return;
+    const code = socket.data.lobbyCode;
+    let username = 'Anon', color = '#aaa';
+    if (code && lobbies[code] && lobbies[code].players[socket.id]) {
+      username = lobbies[code].players[socket.id].username;
+      color = lobbies[code].players[socket.id].color;
+    } else {
+      // Stash a transient name on the socket so home-screen chat works
+      username = socket.data.homeName || defaultUsername();
+      socket.data.homeName = username;
+      color = socket.data.homeColor || '#aaa';
+    }
+    const msg = { from: username, color, text, time: Date.now() };
+    if (code && lobbies[code]) {
+      io.to('lobby:' + code).emit('chat', { ...msg, scope: 'lobby' });
+    } else {
+      io.to('home').emit('chat', { ...msg, scope: 'home' });
+    }
+  });
+
+  // Client tells server its current home-screen name/color (for chat without lobby)
+  socket.on('homeIdentity', ({ username, color }) => {
+    socket.data.homeName = cleanName(username);
+    socket.data.homeColor = color || '#aaa';
+  });
+
+  // Client requests a fresh snapshot of public lobbies (e.g. when returning to home)
+  socket.on('refreshPublicLobbies', () => {
+    socket.join('home');
+    socket.emit('publicLobbies', publicLobbiesList());
   });
 
   socket.on('updateSettings', (settings) => {
@@ -664,6 +802,7 @@ io.on('connection', (socket) => {
       wallW: WALL_W,
       playerSize: PLAYER_SIZE,
     });
+    if (lobby.isPublic) broadcastPublicLobbies();
   });
 
   socket.on('input', (input) => {
@@ -686,6 +825,7 @@ io.on('connection', (socket) => {
     lobby.inGame = false;
     lobby.state = null;
     io.to('lobby:' + code).emit('lobbyUpdate', publicLobby(lobby));
+    if (lobby.isPublic) broadcastPublicLobbies();
   });
 
   socket.on('leaveLobby', () => {
@@ -701,18 +841,26 @@ function handleLeave(socket) {
   const found = findLobbyOf(socket.id);
   if (!found) return;
   const { code, lobby } = found;
+  const wasPublic = lobby.isPublic;
   delete lobby.players[socket.id];
   socket.leave('lobby:' + code);
+  socket.data.lobbyCode = null;
+  // Person who explicitly left re-joins the home room so they see public lobbies
+  if (socket.connected) {
+    socket.join('home');
+    socket.emit('publicLobbies', publicLobbiesList());
+  }
 
   if (Object.keys(lobby.players).length === 0) {
     delete lobbies[code];
+    if (wasPublic) broadcastPublicLobbies();
     return;
   }
-  // reassign host if needed
   if (lobby.hostId === socket.id) {
     lobby.hostId = Object.keys(lobby.players)[0];
   }
   io.to('lobby:' + code).emit('lobbyUpdate', publicLobby(lobby));
+  if (wasPublic) broadcastPublicLobbies();
 }
 
 const PORT = process.env.PORT || 3000;

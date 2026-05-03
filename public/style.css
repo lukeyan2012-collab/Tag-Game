@@ -131,6 +131,143 @@ select option {
   box-shadow: 0 0 10px rgba(255,255,255,0.6);
 }
 
+/* Home — vertical layout (form on top, public games below) */
+#home {
+  justify-content: flex-start;
+  align-items: center;
+  padding: 40px 0 60px;
+  overflow-y: auto;
+  gap: 18px;
+}
+
+.corner-cluster {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 30;
+  display: flex;
+  gap: 8px;
+}
+.corner-btn {
+  font-size: 18px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: #eee;
+  cursor: pointer;
+}
+.corner-btn:hover { background: rgba(255,255,255,0.18); }
+.corner-btn.hidden { display: none; }
+/* In-game floating leave button (single-purpose, fixed position) */
+#practiceLeaveBtn {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 30;
+}
+.public-games {
+  margin-top: 18px;
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.public-games-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  font-size: 16px;
+  color: #ffd166;
+}
+.public-games-header button.small {
+  font-size: 16px;
+  padding: 4px 10px;
+  border-radius: 8px;
+}
+.public-games-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-right: 4px;
+}
+.public-games-empty {
+  color: #aaa;
+  text-align: center;
+  font-size: 14px;
+  padding: 18px 0;
+}
+.public-game-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(255,255,255,0.07);
+  padding: 10px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.12s, transform 0.12s;
+}
+.public-game-row:hover {
+  background: rgba(255,255,255,0.14);
+  transform: translateX(2px);
+}
+.public-game-row .pg-host { font-weight: 600; }
+.public-game-row .pg-meta { color: #aaa; font-size: 13px; }
+.public-game-row .pg-code {
+  font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
+  letter-spacing: 2px;
+  color: #ffd166;
+}
+.public-game-row .pg-join {
+  color: #56cfe1;
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+.public-game-row:hover .pg-join {
+  color: #82e1ed;
+  transform: translateX(3px);
+}
+
+/* Modal */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  backdrop-filter: blur(4px);
+}
+.modal.hidden { display: none; }
+.modal-card {
+  background: #1c2230;
+  border: 1px solid rgba(255,255,255,0.15);
+  padding: 28px;
+  border-radius: 14px;
+  width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  text-align: center;
+}
+.modal-card h2 { margin: 0; font-size: 26px; }
+.modal-sub { color: #aaa; font-size: 14px; margin: 0; }
+button.link {
+  background: transparent;
+  border: none;
+  color: #aaa;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px;
+}
+button.link:hover { color: #ddd; background: transparent; }
+
 button {
   background: rgba(255,255,255,0.1);
   border: 1px solid rgba(255,255,255,0.2);
@@ -300,3 +437,107 @@ hr {
 }
 .gameover-card h2 { margin: 0 0 12px; font-size: 32px; }
 .gameover-card div { margin-bottom: 16px; line-height: 1.5; }
+
+/* Chat panel — movable, draggable by header */
+.chat-panel {
+  position: fixed;
+  width: 320px;
+  height: 280px;
+  background: rgba(15, 18, 28, 0.86);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 14px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+  /* default position: middle-right of viewport (set in JS, kept here as fallback) */
+  top: 40%;
+  right: 24px;
+}
+.chat-panel.hidden { display: none; }
+.chat-header {
+  cursor: grab;
+  user-select: none;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+  font-size: 14px;
+  color: #ffd166;
+}
+.chat-header:active { cursor: grabbing; }
+.chat-x {
+  background: transparent;
+  border: none;
+  color: #ddd;
+  font-size: 18px;
+  padding: 0 4px;
+  cursor: pointer;
+}
+.chat-x:hover { color: #fff; background: transparent; }
+.chat-messages {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.chat-msg {
+  word-break: break-word;
+}
+.chat-msg .from {
+  font-weight: 700;
+  margin-right: 6px;
+}
+.chat-input-row {
+  border-top: 1px solid rgba(255,255,255,0.1);
+  padding: 6px 8px;
+}
+.chat-input-row input {
+  width: 100%;
+  background: rgba(0,0,0,0.4);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: #eee;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+  outline: none;
+}
+.chat-input-row input:focus { border-color: #56cfe1; }
+
+/* Controls modal */
+.controls-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0;
+}
+.control-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.control-row:hover { background: rgba(255,255,255,0.12); }
+.control-row.binding { border-color: #56cfe1; background: rgba(86,207,225,0.10); }
+.control-row .ctl-label { font-weight: 600; }
+.control-row .ctl-key {
+  font-family: ui-monospace, "Cascadia Code", Menlo, monospace;
+  background: rgba(0,0,0,0.4);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  letter-spacing: 1px;
+}

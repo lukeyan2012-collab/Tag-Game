@@ -9,6 +9,10 @@
 <body>
   <!-- Home screen -->
   <div id="home" class="screen active">
+    <div class="corner-cluster">
+      <button id="aboutBlankBtn" class="corner-btn" title="Quick exit">⤴</button>
+      <button id="controlsBtn" class="corner-btn" title="Controls">⌨</button>
+    </div>
     <h1 class="title">Tag</h1>
     <div class="card">
       <label>
@@ -28,7 +32,65 @@
         <button id="joinBtn">Join Game</button>
         <button id="createBtn" class="primary">Create Game</button>
       </div>
+      <button id="practiceBtn">Practice</button>
       <div id="homeError" class="error"></div>
+    </div>
+
+    <div class="public-games card wide">
+      <div class="public-games-header">
+        <span>Public Games</span>
+        <button id="refreshPublicBtn" class="small">↻</button>
+      </div>
+      <div id="publicGamesList" class="public-games-list">
+        <div class="public-games-empty">No public games yet — create one!</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create-game choice modal -->
+  <div id="createModal" class="modal hidden">
+    <div class="modal-card">
+      <h2>Create Game</h2>
+      <p class="modal-sub">Public games show up on everyone's home screen. Private games are code-only.</p>
+      <div class="row">
+        <button id="createPrivateBtn">Private</button>
+        <button id="createPublicBtn" class="primary">Public</button>
+      </div>
+      <button id="cancelCreateBtn" class="link">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Practice map-picker modal -->
+  <div id="practiceModal" class="modal hidden">
+    <div class="modal-card">
+      <h2>Practice</h2>
+      <p class="modal-sub">Solo, no timer, no powerups. Pick a map and go.</p>
+      <label>
+        Map
+        <select id="practiceMapSelect">
+          <option value="summer">Summer</option>
+          <option value="spring">Spring</option>
+          <option value="fall">Fall</option>
+          <option value="winter">Winter</option>
+        </select>
+      </label>
+      <div class="row">
+        <button id="cancelPracticeBtn">Cancel</button>
+        <button id="startPracticeBtn" class="primary">Start</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Custom controls modal -->
+  <div id="controlsModal" class="modal hidden">
+    <div class="modal-card">
+      <h2>Controls</h2>
+      <p class="modal-sub">Click a row, then press the key you want.</p>
+      <div id="controlsList" class="controls-list"></div>
+      <div class="row">
+        <button id="resetControlsBtn">Reset</button>
+        <button id="closeControlsBtn" class="primary">Done</button>
+      </div>
     </div>
   </div>
 
@@ -89,12 +151,25 @@
       <div id="hudMode" class="hud-side hud-right"></div>
     </div>
     <canvas id="canvas" width="1600" height="900"></canvas>
+    <button id="practiceLeaveBtn" class="corner-btn hidden">Leave</button>
     <div id="gameOver" class="gameover hidden">
       <div class="gameover-card">
         <h2 id="gameOverTitle">Game Over</h2>
         <div id="gameOverText"></div>
         <button id="backToLobbyBtn" class="primary">Back to Lobby</button>
       </div>
+    </div>
+  </div>
+
+  <!-- Floating chat panel (movable, hidden until first message / Enter) -->
+  <div id="chatPanel" class="chat-panel hidden">
+    <div id="chatHeader" class="chat-header">
+      <span>Chat</span>
+      <button id="chatClose" class="chat-x">×</button>
+    </div>
+    <div id="chatMessages" class="chat-messages"></div>
+    <div class="chat-input-row">
+      <input id="chatInput" type="text" maxlength="200" placeholder="Press Enter to send…" />
     </div>
   </div>
 
